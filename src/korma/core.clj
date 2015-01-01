@@ -294,7 +294,7 @@
 (defn join* [query type table clause]
   (update-in query [:joins] conj [type table clause]))
 
-(defn add-joins 
+(defn add-joins
   ([query ent rel]
      (add-joins query ent rel :left))
   ([query ent rel type]
@@ -318,7 +318,7 @@
   ([query ent]
      `(join ~query :left ~ent))
   ([query type-or-table ent-or-clause]
-     `(if (entity? ~ent-or-clause) 
+     `(if (entity? ~ent-or-clause)
         (let [q# ~query
               e# ~ent-or-clause
               rel# (get-rel (:ent q#) e#)
@@ -470,13 +470,17 @@
         query))
     query))
 
+(defn- get-key-naming-strategy [query]
+  (get-in (or (:options query) @conf/options) [:naming :keys]))
+
 (defn exec
   "Execute a query map and return the results."
   [query]
   (let [query (apply-prepares query)
         query (bind-query query (eng/->sql query))
         sql (:sql-str query)
-        params (:params query)]
+        params (:params query)
+        ->key (get-key-naming-strategy query)]
     (cond
      (:sql query) sql
      (= *exec-mode* :sql) sql
@@ -488,7 +492,7 @@
                                                              (filter (comp #{:belongs-to} :rel-type))
                                                              (map :fk-key))
                                                         (-> query :ent :pk))
-                                      results (apply-posts query [(zipmap result-keys (repeat 1))])]
+                                      results (apply-posts query [(zipmap (map ->key result-keys) (repeat 1))])]
                                   (first results)
                                   results))
      :else (let [results (db/do-query query)]
@@ -727,9 +731,6 @@
 (defn- merge-with-unique-keys [->key m1 m2]
   (reduce (fn [m [k v]] (assoc m (make-key-unique ->key m k 1) v)) m1 m2))
 
-(defn- get-key-naming-strategy [query]
-  (get-in (or (:options query) @conf/options) [:naming :keys]))
-
 (defn- get-join-keys [rel ent sub-ent]
   (case (:rel-type rel)
     :has-one    [(:pk ent) (:fk-key rel)]
@@ -737,16 +738,17 @@
 
 (defn- with-one-to-one-later [rel query sub-ent body-fn]
   (let [sub-ent (assoc-db-to-entity query sub-ent)
-        [ent-key sub-ent-key] (get-join-keys rel (:ent query) sub-ent)]
+        [ent-key sub-ent-key] (get-join-keys rel (:ent query) sub-ent)
+        ->key (get-key-naming-strategy query)]
     (post-query query
                 (partial map
                          (fn [ent]
-                           (merge-with-unique-keys (get-key-naming-strategy query)
+                           (merge-with-unique-keys ->key
                                                    ent
                                                    (first
                                                      (select sub-ent
                                                              (body-fn)
-                                                             (where {sub-ent-key (get ent ent-key)})))))))))
+                                                             (where {sub-ent-key (get ent (->key ent-key))})))))))))
 
 (defn- with-one-to-one-now [rel query sub-ent body-fn]
   (let [table (if (:alias rel) [(:table sub-ent) (:alias sub-ent)] (:table sub-ent))

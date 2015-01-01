@@ -387,13 +387,13 @@
        "SELECT \"state\".* FROM \"state\" WHERE EXISTS((SELECT \"address\".* FROM \"address\" WHERE ((\"address\".\"id\" > ?) AND \"address\".\"state_id\" = \"state\".\"id\")))"
        (sql-only
          (select state
-                 (where (exists (subselect address 
+                 (where (exists (subselect address
                                            (where (and {:id [> 5]} (= :state_id :state.id))))))))
 
        "SELECT \"state\".* FROM \"state\" WHERE (EXISTS((SELECT \"address\".* FROM \"address\" WHERE ((\"address\".\"id\" > ?) AND \"address\".\"state_id\" = \"state\".\"id\"))) AND NOT(EXISTS((SELECT \"address\".* FROM \"address\" WHERE ((\"address\".\"id\" < ?) OR \"address\".\"state_id\" <> \"state\".\"id\")))))"
        (sql-only
          (select state
-                 (where (and (exists (subselect address 
+                 (where (and (exists (subselect address
                                            (where (and {:id [> 5]} (= :state_id :state.id)))))
                              (not (exists (subselect address
                                            (where (or  {:id [< 10]} (not= :state_id :state.id))))))))))
@@ -401,8 +401,8 @@
        "SELECT \"state\".* FROM \"state\" WHERE EXISTS((SELECT \"address\".* FROM \"address\" WHERE ((\"address\".\"id\" > ?) AND NOT(EXISTS((SELECT \"users\".* FROM \"users\" WHERE \"address\".\"user_id\" = \"users\".\"id\"))))))"
        (sql-only
          (select state
-                 (where (exists (subselect address 
-                                           (where (and {:id [> 5]} 
+                 (where (exists (subselect address
+                                           (where (and {:id [> 5]}
                                                        (not (exists (subselect user2 (where (= :address.user_id :id))))))))))))
 
        "SELECT \"users\".* FROM \"users\", (SELECT \"users\".* FROM \"users\" WHERE (\"users\".\"age\" > ?)) AS \"u2\""
@@ -747,3 +747,24 @@
                              (with address-with-db
                                    (where {:status 1}))
                              (order :id)))))))
+
+
+;;****************************************************
+;; Field naming and belongs-to mapping
+;;****************************************************
+(defdb with-naming-db (mysql {:naming {:keys (comp keyword clojure.string/upper-case name)}}))
+
+(declare user4)
+
+(defentity address4
+  (database with-naming-db)
+  (transform identity)
+  (belongs-to user4))
+
+(defentity user4
+  (database with-naming-db)
+  (has-many address4))
+
+(deftest test-belongs-to-with-key-naming-fn-for-subentity
+  (is (= {:ID 1 :USER4_ID 1 :ID_2 1 :USER_MARKER 1}
+         (first (dry-run (select address4 (with user4 (fields :USER_MARKER))))))))
